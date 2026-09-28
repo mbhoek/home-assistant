@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "home-assistant": {
+      "type": "http",
+      "url": "https://home.therightcorner.nl/api/mcp",
+      "tools": ["*"]
+    }
+  }
+}
