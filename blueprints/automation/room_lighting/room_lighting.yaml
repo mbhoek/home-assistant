@@ -1,0 +1,565 @@
+blueprint:
+  name: Room lighting (layers, buttons, motion)
+  description: >
+    Controls a room's Direct, Indirect (ambient) and Task lighting from one or
+    more buttons and an optional motion sensor (with optional lux sensor).
+
+
+    **Main buttons**
+
+    - Short press: room off → default layers on; room on → all off.
+
+    - Short press again within the multi-press window (default 1 s) of the
+    last light change: cycle Indirect → Indirect+Direct → All → Task. Works
+    with remotes that have no native double press (e.g. Hue Smart Button).
+
+    - Long press / hold: dim down in steps; at minimum, jump back to 100%.
+    Turns the default layers on when the room is off.
+
+
+    **Motion** turns on Indirect lighting only (or the default layers if the
+    room has no Indirect lights) when it is dark enough, and switches the room
+    off after a period without motion. Using a button sets the manual override
+    helper, which stops motion from switching the room off until the room is
+    turned off or the override times out.
+
+
+    Brightness and colour temperature are left to Adaptive Lighting.
+  domain: automation
+  homeassistant:
+    min_version: 2024.8.0
+  input:
+    lights_section:
+      name: Lights
+      icon: mdi:lightbulb-group
+      input:
+        direct_lights:
+          name: Direct lights
+          description: Downlights, spots, ceiling lights.
+          default: []
+          selector:
+            entity:
+              filter:
+                - domain: light
+              multiple: true
+        indirect_lights:
+          name: Indirect lights
+          description: Uplights, strips and other ambient lighting.
+          default: []
+          selector:
+            entity:
+              filter:
+                - domain: light
+              multiple: true
+        task_lights:
+          name: Task lights
+          description: Reading, desk and other focused lighting.
+          default: []
+          selector:
+            entity:
+              filter:
+                - domain: light
+              multiple: true
+        default_layers:
+          name: Default layers
+          description: Layers switched on by a short press.
+          default:
+            - indirect
+            - direct
+          selector:
+            select:
+              multiple: true
+              options:
+                - label: Direct
+                  value: direct
+                - label: Indirect
+                  value: indirect
+                - label: Task
+                  value: task
+    buttons_section:
+      name: Buttons
+      icon: mdi:gesture-tap-button
+      input:
+        buttons:
+          name: Main buttons
+          description: Event entities with the short / double / long press behaviour.
+          default: []
+          selector:
+            entity:
+              filter:
+                - domain: event
+              multiple: true
+        dim_up_buttons:
+          name: Brighten buttons (optional)
+          description: Event entities that brighten (e.g. dimmer "up"). Turns on the default layers when the room is off.
+          default: []
+          selector:
+            entity:
+              filter:
+                - domain: event
+              multiple: true
+        dim_down_buttons:
+          name: Dim buttons (optional)
+          description: Event entities that dim (e.g. dimmer "down").
+          default: []
+          selector:
+            entity:
+              filter:
+                - domain: event
+              multiple: true
+        off_buttons:
+          name: Off buttons (optional)
+          description: Event entities that switch the whole room off.
+          default: []
+          selector:
+            entity:
+              filter:
+                - domain: event
+              multiple: true
+        short_press_types:
+          name: Short press event types
+          description: Values of the event entity's event_type attribute.
+          default:
+            - short_release
+          selector:
+            select:
+              multiple: true
+              custom_value: true
+              options:
+                - short_release
+                - initial_press
+                - single
+                - press
+        multi_press_window:
+          name: Multi-press window
+          description: >
+            A short press within this time after the room's lights last
+            switched on/off cycles to the next scene instead of switching off.
+          default: 1
+          selector:
+            number:
+              min: 0.3
+              max: 3
+              step: 0.1
+              unit_of_measurement: s
+        long_press_types:
+          name: Long press / hold event types
+          description: Each matching event performs one dim step.
+          default:
+            - long_press
+            - repeat
+          selector:
+            select:
+              multiple: true
+              custom_value: true
+              options:
+                - long_press
+                - repeat
+                - hold
+        dim_step:
+          name: Dim step
+          default: 15
+          selector:
+            number:
+              min: 5
+              max: 50
+              step: 5
+              unit_of_measurement: "%"
+    motion_section:
+      name: Motion
+      icon: mdi:motion-sensor
+      collapsed: true
+      input:
+        motion_sensor:
+          name: Motion sensor(s) (optional)
+          default: []
+          selector:
+            entity:
+              filter:
+                - domain: binary_sensor
+                  device_class:
+                    - motion
+                    - occupancy
+                    - presence
+              multiple: true
+        lux_sensor:
+          name: Lux sensor (optional)
+          description: Without a lux sensor, motion always switches lights on.
+          default: []
+          selector:
+            entity:
+              filter:
+                - domain: sensor
+                  device_class: illuminance
+              multiple: false
+        lux_threshold:
+          name: Lux threshold
+          description: Motion only switches lights on below this illuminance.
+          default: 30
+          selector:
+            number:
+              min: 0
+              max: 1000
+              unit_of_measurement: lx
+        no_motion_minutes:
+          name: Switch off after no motion
+          default: 5
+          selector:
+            number:
+              min: 1
+              max: 120
+              unit_of_measurement: min
+    override_section:
+      name: Manual override & Adaptive Lighting
+      icon: mdi:hand-back-right
+      collapsed: true
+      input:
+        override_helper:
+          name: Manual override helper
+          description: >
+            input_boolean that is switched on when buttons are used; while on,
+            motion won't switch the room off. Required when a motion sensor is
+            used, otherwise motion switches off lights you turned on by hand.
+          default: []
+          selector:
+            entity:
+              filter:
+                - domain: input_boolean
+              multiple: false
+        override_timeout:
+          name: Manual override timeout
+          description: Clears the override after this long; the room then switches off if there is no motion.
+          default: 120
+          selector:
+            number:
+              min: 10
+              max: 720
+              unit_of_measurement: min
+        adaptive_lighting_switch:
+          name: Adaptive Lighting switch (optional)
+          description: Main Adaptive Lighting switch for this room; its manual control flags are reset when the room switches off.
+          default: []
+          selector:
+            entity:
+              filter:
+                - domain: switch
+                  integration: adaptive_lighting
+              multiple: false
+
+mode: queued
+max: 10
+max_exceeded: silent
+
+trigger_variables:
+  t_direct: !input direct_lights
+  t_indirect: !input indirect_lights
+  t_task: !input task_lights
+
+trigger:
+  - platform: state
+    id: button
+    entity_id: !input buttons
+    not_from: [unavailable]
+    not_to: [unavailable, unknown]
+  - platform: state
+    id: dim_up
+    entity_id: !input dim_up_buttons
+    not_from: [unavailable]
+    not_to: [unavailable, unknown]
+  - platform: state
+    id: dim_down
+    entity_id: !input dim_down_buttons
+    not_from: [unavailable]
+    not_to: [unavailable, unknown]
+  - platform: state
+    id: off_button
+    entity_id: !input off_buttons
+    not_from: [unavailable]
+    not_to: [unavailable, unknown]
+  - platform: state
+    id: motion_on
+    entity_id: !input motion_sensor
+    from: "off"
+    to: "on"
+  - platform: state
+    id: motion_off
+    entity_id: !input motion_sensor
+    to: "off"
+    for:
+      minutes: !input no_motion_minutes
+  - platform: state
+    id: override_timeout
+    entity_id: !input override_helper
+    to: "on"
+    for:
+      minutes: !input override_timeout
+  - platform: template
+    id: room_off
+    value_template: >
+      {% set l = ([t_direct] if t_direct is string else t_direct)
+        + ([t_indirect] if t_indirect is string else t_indirect)
+        + ([t_task] if t_task is string else t_task) %}
+      {{ l | count > 0 and l | select('is_state', 'on') | list | count == 0 }}
+
+variables:
+  in_direct: !input direct_lights
+  in_indirect: !input indirect_lights
+  in_task: !input task_lights
+  in_default_layers: !input default_layers
+  in_motion: !input motion_sensor
+  in_lux: !input lux_sensor
+  in_override: !input override_helper
+  in_al: !input adaptive_lighting_switch
+  short_types: !input short_press_types
+  multi_press_window: !input multi_press_window
+  long_types: !input long_press_types
+  dim_step: !input dim_step
+  lux_threshold: !input lux_threshold
+
+  direct: "{{ [in_direct] if in_direct is string else in_direct | list }}"
+  indirect: "{{ [in_indirect] if in_indirect is string else in_indirect | list }}"
+  task: "{{ [in_task] if in_task is string else in_task | list }}"
+  motion_entities: "{{ [in_motion] if in_motion is string else in_motion | list }}"
+  lux_entity: "{{ in_lux if in_lux is string else (in_lux | first if in_lux | count > 0 else '') }}"
+  override_entity: "{{ in_override if in_override is string else (in_override | first if in_override | count > 0 else '') }}"
+  al_entity: "{{ in_al if in_al is string else (in_al | first if in_al | count > 0 else '') }}"
+
+  layer_lights:
+    direct: "{{ direct }}"
+    indirect: "{{ indirect }}"
+    task: "{{ task }}"
+  all_lights: "{{ (direct + indirect + task) | unique | list }}"
+  on_lights: "{{ all_lights | select('is_state', 'on') | list }}"
+  room_on: "{{ on_lights | count > 0 }}"
+
+  default_lights: >
+    {% set ns = namespace(l=[]) %}
+    {% for layer in in_default_layers %}
+      {% set ns.l = ns.l + layer_lights[layer] %}
+    {% endfor %}
+    {{ (ns.l if ns.l | count > 0 else all_lights) | unique | list }}
+  motion_lights: "{{ indirect if indirect | count > 0 else default_lights }}"
+
+  available_layers: >
+    {% set ns = namespace(l=[]) %}
+    {% for layer in ['direct', 'indirect', 'task'] %}
+      {% if layer_lights[layer] | count > 0 %}{% set ns.l = ns.l + [layer] %}{% endif %}
+    {% endfor %}
+    {{ ns.l }}
+  layers_on: >
+    {% set ns = namespace(l=[]) %}
+    {% for layer in available_layers %}
+      {% if layer_lights[layer] | select('is_state', 'on') | list | count > 0 %}
+        {% set ns.l = ns.l + [layer] %}
+      {% endif %}
+    {% endfor %}
+    {{ ns.l | sort }}
+  # Cycle order; scenes collapse when a room lacks a layer (e.g. no Task lights).
+  scenes: >
+    {% set base = [['indirect'], ['direct', 'indirect'], ['direct', 'indirect', 'task'], ['task']] %}
+    {% set ns = namespace(out=[]) %}
+    {% for s in base %}
+      {% set f = s | select('in', available_layers) | sort %}
+      {% if f | count > 0 and f not in ns.out %}
+        {% set ns.out = ns.out + [f] %}
+      {% endif %}
+    {% endfor %}
+    {{ ns.out }}
+  next_scene_lights: >
+    {% set ns = namespace(i=-1, l=[]) %}
+    {% for s in scenes %}
+      {% if s == layers_on %}{% set ns.i = loop.index0 %}{% endif %}
+    {% endfor %}
+    {% if scenes | count > 0 %}
+      {% for layer in scenes[(ns.i + 1) % (scenes | count)] %}
+        {% set ns.l = ns.l + layer_lights[layer] %}
+      {% endfor %}
+    {% endif %}
+    {{ ns.l | unique | list }}
+  other_on_lights: "{{ on_lights | reject('in', next_scene_lights) | list }}"
+
+  event_type: >
+    {{ (trigger.to_state.attributes.event_type | default(''))
+       if trigger.to_state is defined and trigger.to_state else '' }}
+  is_short: "{{ event_type in short_types }}"
+  # last_changed only moves on on/off transitions (not Adaptive Lighting adjustments),
+  # so this measures the time since the previous press (or motion) switched lights.
+  last_change_age: >
+    {% set t = expand(all_lights) | map(attribute='last_changed') | list %}
+    {{ (now() - (t | max)).total_seconds() if t | count > 0 else 9999 }}
+  is_quick_repeat: >
+    {{ room_on and scenes | count > 1 and last_change_age | float < multi_press_window | float }}
+  is_long: "{{ event_type in long_types }}"
+  # Lowest brightness (0-255) of dimmable lights that are on; non-dimmable lights are ignored.
+  min_brightness: >
+    {% set b = on_lights | map('state_attr', 'brightness') | reject('none') | map('int') | list %}
+    {{ b | min if b | count > 0 else 255 }}
+  lux_ok: >
+    {{ lux_entity == '' or not is_number(states(lux_entity))
+       or states(lux_entity) | float < lux_threshold | float }}
+  override_on: "{{ override_entity != '' and is_state(override_entity, 'on') }}"
+  no_motion: "{{ motion_entities | select('is_state', 'on') | list | count == 0 }}"
+
+action:
+  - choose:
+      # ---------------- Main buttons ----------------
+      - alias: Short press - toggle default layers
+        conditions:
+          - "{{ trigger.id == 'button' and is_short and not is_quick_repeat }}"
+        sequence:
+          - if: "{{ room_on }}"
+            then:
+              - action: light.turn_off
+                target:
+                  entity_id: "{{ on_lights }}"
+            else:
+              - action: light.turn_on
+                target:
+                  entity_id: "{{ default_lights }}"
+              - if: "{{ override_entity != '' }}"
+                then:
+                  - action: input_boolean.turn_on
+                    target:
+                      entity_id: "{{ override_entity }}"
+
+      - alias: Quick repeated short press - cycle scenes
+        conditions:
+          - "{{ trigger.id == 'button' and is_short and is_quick_repeat and next_scene_lights | count > 0 }}"
+        sequence:
+          - action: light.turn_on
+            target:
+              entity_id: "{{ next_scene_lights }}"
+          - if: "{{ other_on_lights | count > 0 }}"
+            then:
+              - action: light.turn_off
+                target:
+                  entity_id: "{{ other_on_lights }}"
+          - if: "{{ override_entity != '' }}"
+            then:
+              - action: input_boolean.turn_on
+                target:
+                  entity_id: "{{ override_entity }}"
+
+      - alias: Long press - dim down, wrap to full
+        conditions:
+          - "{{ trigger.id == 'button' and is_long }}"
+        sequence:
+          - choose:
+              - conditions: "{{ not room_on }}"
+                sequence:
+                  - action: light.turn_on
+                    target:
+                      entity_id: "{{ default_lights }}"
+              - conditions: "{{ min_brightness | int <= (dim_step | float * 2.55) }}"
+                sequence:
+                  - action: light.turn_on
+                    target:
+                      entity_id: "{{ on_lights }}"
+                    data:
+                      brightness_pct: 100
+            default:
+              - action: light.turn_on
+                target:
+                  entity_id: "{{ on_lights }}"
+                data:
+                  brightness_step_pct: "{{ -(dim_step | int) }}"
+          - if: "{{ override_entity != '' }}"
+            then:
+              - action: input_boolean.turn_on
+                target:
+                  entity_id: "{{ override_entity }}"
+
+      # ---------------- Dedicated buttons ----------------
+      - alias: Brighten button
+        conditions:
+          - "{{ trigger.id == 'dim_up' and (is_short or is_long) }}"
+        sequence:
+          - if: "{{ room_on }}"
+            then:
+              - action: light.turn_on
+                target:
+                  entity_id: "{{ on_lights }}"
+                data:
+                  brightness_step_pct: "{{ dim_step | int }}"
+            else:
+              - action: light.turn_on
+                target:
+                  entity_id: "{{ default_lights }}"
+          - if: "{{ override_entity != '' }}"
+            then:
+              - action: input_boolean.turn_on
+                target:
+                  entity_id: "{{ override_entity }}"
+
+      - alias: Dim button
+        conditions:
+          - "{{ trigger.id == 'dim_down' and (is_short or is_long) and room_on }}"
+        sequence:
+          - action: light.turn_on
+            target:
+              entity_id: "{{ on_lights }}"
+            data:
+              brightness_step_pct: "{{ -(dim_step | int) }}"
+          - if: "{{ override_entity != '' }}"
+            then:
+              - action: input_boolean.turn_on
+                target:
+                  entity_id: "{{ override_entity }}"
+
+      - alias: Off button
+        conditions:
+          - "{{ trigger.id == 'off_button' and is_short and room_on }}"
+        sequence:
+          - action: light.turn_off
+            target:
+              entity_id: "{{ on_lights }}"
+
+      # ---------------- Motion ----------------
+      - alias: Motion - ambient on when dark
+        conditions:
+          - "{{ trigger.id == 'motion_on' }}"
+          - "{{ not room_on and not override_on and lux_ok and motion_lights | count > 0 }}"
+        sequence:
+          - action: light.turn_on
+            target:
+              entity_id: "{{ motion_lights }}"
+
+      - alias: No motion - room off unless overridden
+        conditions:
+          - "{{ trigger.id == 'motion_off' }}"
+          - "{{ room_on and not override_on and no_motion }}"
+        sequence:
+          - action: light.turn_off
+            target:
+              entity_id: "{{ on_lights }}"
+
+      - alias: Override timeout
+        conditions:
+          - "{{ trigger.id == 'override_timeout' }}"
+        sequence:
+          - action: input_boolean.turn_off
+            target:
+              entity_id: "{{ override_entity }}"
+          - if: "{{ motion_entities | count > 0 and no_motion and room_on }}"
+            then:
+              - action: light.turn_off
+                target:
+                  entity_id: "{{ on_lights }}"
+
+      # ---------------- Room switched off (from any source) ----------------
+      - alias: Room off - clear override and Adaptive Lighting manual control
+        conditions:
+          - "{{ trigger.id == 'room_off' }}"
+        sequence:
+          - if: "{{ override_on }}"
+            then:
+              - action: input_boolean.turn_off
+                target:
+                  entity_id: "{{ override_entity }}"
+          - if: "{{ al_entity != '' }}"
+            then:
+              - action: adaptive_lighting.set_manual_control
+                continue_on_error: true
+                data:
+                  entity_id: "{{ al_entity }}"
+                  manual_control: false

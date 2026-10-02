@@ -2,7 +2,10 @@
   "mcpServers": {
     "home-assistant": {
       "type": "http",
-      "url": "https://home.therightcorner.nl/api/mcp",
+      "url": "${HOME_ASSISTANT_URL}/api/mcp",
+      "headers": {
+        "Authorization": "Bearer ${HOME_ASSISTANT_TOKEN}"
+      },
       "tools": ["*"]
     }
   }
