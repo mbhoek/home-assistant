@@ -57,3 +57,15 @@ Keep lights with a separate purpose outside the layer groups and control them se
 - **Light groups.** `light.turn_on` on a group switches all its members. Make sure no bulb appears in more than one layer.
 - **Adaptive Lighting.** Dimming makes AL mark lights as manually controlled (when *take over control* is enabled). They return to adaptive control when the room is switched off.
 - **Without an override helper,** motion will also switch off lights that you turned on with a button.
+
+### Setup In Particular
+
+- go to *Settings → Devices & services → Helpers*
+- Create Helper *Group → Light Group*
+- "Room Direct Lights" and "Room Indirect Lights" and "Room Task Lights"
+- go to *Settings → Devices & services → Integrations*
+- choose "Adaptive Lighting" and then "Add Entry"
+- duplicate an existing room (for the same settings), adjust entities
+- go to *Settings → Automations & scenes → Blueprints*
+- create a new automation using the "Room lighting" blueprint
+- after creation adjust the "Area" from the main list
