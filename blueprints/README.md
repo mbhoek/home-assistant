@@ -74,7 +74,7 @@ Keep lights with a separate purpose outside the layer groups and control them se
 
 ### Night Mode (`automation/house_modes/night_mode.yaml`)
 
-Night Mode uses an `input_boolean` helper as the single source of truth for the house state. The in-bed sensor only turns the helper on; it never turns it off. Getting up during the night therefore does not end Night Mode. Turn the helper off from a dashboard or another deliberate manual control when you want to leave Night Mode.
+Night Mode uses an `input_boolean` helper as the single source of truth for the house state. The in-bed sensor only turns the helper on; it never turns it off. Getting up during the night therefore does not end Night Mode. Turn the helper off from a dashboard or press a configured exit button when you want to leave Night Mode.
 
 When the helper turns on, the automation enables the selected Adaptive Lighting sleep-mode switches and turns off the selected lights. When the helper turns off, it disables those sleep-mode switches. Lights are not automatically restored.
 
@@ -84,5 +84,10 @@ Setup:
 2. Create an automation from the **Night Mode** blueprint.
 3. Select the helper, in-bed sensor, all rooms' Adaptive Lighting sleep-mode switches, and the household lights to turn off.
 4. Add the helper to a dashboard if you want a convenient manual way to end Night Mode.
+5. Optionally select bedside remote `event.*` entities under **Exit buttons**. Press the remote and inspect its `event_type` attribute in *Developer tools → States*, then set **Exit press event types** to the matching value (default `short_release`; custom values are supported). These inputs expect event entities, not `switch.*` or `button.*` entities.
+
+A matching exit-button event turns off the Night Mode helper, which disables the selected sleep-mode switches without turning lights on. Attribute-only updates and transitions from or to `unknown` or `unavailable` are ignored. Leave **Exit buttons** empty to retain dashboard-only exit control. After updating an existing blueprint, reload automations and edit its automation to configure the new inputs, then test the remote in Home Assistant.
+
+Exiting Night Mode does not block future bed-sensor activation: a later off-to-on transition of the in-bed sensor can enter Night Mode again.
 
 Use the helper as the canonical mode state: sensors and buttons should request a transition by changing the helper, while mode-specific automations react to its on/off transitions. This keeps triggers separate from the effects and allows future modes to follow the same pattern. Away Mode is not included yet; choose a presence source and decide how returning home affects the mode before adding it.
