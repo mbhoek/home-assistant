@@ -3,27 +3,12 @@
 Stuff for my Home Assistant.
 
 - [Blueprints](blueprints/README.md): reusable automations, such as layered room lighting with buttons and motion.
+- [House modes](blueprints/README.md#house-modes): helper-driven home states, starting with Night Mode.
 
-## Home Assistant MCP setup (long-lived token)
+## Home Assistant MCP
 
-1. In Home Assistant: **Profile** -> **Long-Lived Access Tokens** -> **Create Token**.
-2. In PowerShell, set the instance base URL and token for your current session:
-
-   ```powershell
-   $env:HOME_ASSISTANT_URL = "<your Home Assistant base URL>"
-   $env:HOME_ASSISTANT_TOKEN = "your-long-lived-token"
-   ```
-
-3. The MCP server is configured in `.mcp.json` to use these environment
-   variables for its endpoint and authorization header.
-4. Start Copilot CLI from this repo and verify with:
-
-   ```text
-   /mcp
-   ```
-
-If you want the token to persist across PowerShell sessions, add it with `setx`:
-
-```powershell
-setx HOME_ASSISTANT_TOKEN "your-long-lived-token"
-```
+The Home Assistant MCP server is provided by your Copilot environment; this
+repository does not contain an MCP server configuration. Start Copilot CLI
+from this repository and run `/mcp` to check the server connection. Configure
+or update the server and its credentials in your Copilot client's private MCP
+settings, not in tracked repository files.

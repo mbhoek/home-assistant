@@ -1,0 +1,114 @@
+blueprint:
+  name: Night Mode
+  description: >
+    Uses a helper as the house's Night Mode state. An in-bed sensor turns the
+    mode on; it does not turn the mode off, so getting up during the night
+    won't cancel it. Turning the helper off manually ends Night Mode.
+
+
+    When Night Mode turns on, the selected Adaptive Lighting sleep-mode
+    switches are enabled and the selected lights are turned off. When it turns
+    off, the sleep-mode switches are disabled.
+  domain: automation
+  homeassistant:
+    min_version: 2024.8.0
+  input:
+    state_section:
+      name: House state
+      icon: mdi:home-switch
+      input:
+        night_mode_helper:
+          name: Night Mode helper
+          description: input_boolean that represents the current Night Mode state.
+          selector:
+            entity:
+              filter:
+                - domain: input_boolean
+              multiple: false
+        in_bed_sensor:
+          name: In-bed sensor
+          description: Turns Night Mode on when the sensor changes to on. It never turns the mode off.
+          selector:
+            entity:
+              filter:
+                - domain: binary_sensor
+              multiple: false
+    lighting_section:
+      name: Lighting
+      icon: mdi:lightbulb-group
+      input:
+        adaptive_lighting_sleep_switches:
+          name: Adaptive Lighting sleep-mode switches
+          description: Select each room's Adaptive Lighting sleep-mode switch.
+          default: []
+          selector:
+            entity:
+              filter:
+                - domain: switch
+                  integration: adaptive_lighting
+              multiple: true
+        lights_to_turn_off:
+          name: Lights to turn off
+          description: Select the household lights to switch off on Night Mode entry.
+          default: []
+          selector:
+            entity:
+              filter:
+                - domain: light
+              multiple: true
+
+mode: queued
+
+trigger:
+  - platform: state
+    id: in_bed
+    entity_id: !input in_bed_sensor
+    from: "off"
+    to: "on"
+  - platform: state
+    id: night_mode_on
+    entity_id: !input night_mode_helper
+    to: "on"
+  - platform: state
+    id: night_mode_off
+    entity_id: !input night_mode_helper
+    to: "off"
+
+variables:
+  sleep_switches: !input adaptive_lighting_sleep_switches
+  lights_to_turn_off: !input lights_to_turn_off
+
+action:
+  - choose:
+      - alias: In bed - enter Night Mode
+        conditions:
+          - "{{ trigger.id == 'in_bed' }}"
+        sequence:
+          - action: input_boolean.turn_on
+            target:
+              entity_id: !input night_mode_helper
+
+      - alias: Night Mode enabled - set sleep lighting and turn off lights
+        conditions:
+          - "{{ trigger.id == 'night_mode_on' }}"
+        sequence:
+          - if: "{{ sleep_switches | count > 0 }}"
+            then:
+              - action: switch.turn_on
+                target:
+                  entity_id: "{{ sleep_switches }}"
+          - if: "{{ lights_to_turn_off | count > 0 }}"
+            then:
+              - action: light.turn_off
+                target:
+                  entity_id: "{{ lights_to_turn_off }}"
+
+      - alias: Night Mode disabled - leave sleep lighting
+        conditions:
+          - "{{ trigger.id == 'night_mode_off' }}"
+        sequence:
+          - if: "{{ sleep_switches | count > 0 }}"
+            then:
+              - action: switch.turn_off
+                target:
+                  entity_id: "{{ sleep_switches }}"

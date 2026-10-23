@@ -69,3 +69,20 @@ Keep lights with a separate purpose outside the layer groups and control them se
 - go to *Settings → Automations & scenes → Blueprints*
 - create a new automation using the "Room lighting" blueprint
 - after creation adjust the "Area" from the main list
+
+## House modes
+
+### Night Mode (`automation/house_modes/night_mode.yaml`)
+
+Night Mode uses an `input_boolean` helper as the single source of truth for the house state. The in-bed sensor only turns the helper on; it never turns it off. Getting up during the night therefore does not end Night Mode. Turn the helper off from a dashboard or another deliberate manual control when you want to leave Night Mode.
+
+When the helper turns on, the automation enables the selected Adaptive Lighting sleep-mode switches and turns off the selected lights. When the helper turns off, it disables those sleep-mode switches. Lights are not automatically restored.
+
+Setup:
+
+1. Create an `input_boolean` helper for Night Mode.
+2. Create an automation from the **Night Mode** blueprint.
+3. Select the helper, in-bed sensor, all rooms' Adaptive Lighting sleep-mode switches, and the household lights to turn off.
+4. Add the helper to a dashboard if you want a convenient manual way to end Night Mode.
+
+Use the helper as the canonical mode state: sensors and buttons should request a transition by changing the helper, while mode-specific automations react to its on/off transitions. This keeps triggers separate from the effects and allows future modes to follow the same pattern. Away Mode is not included yet; choose a presence source and decide how returning home affects the mode before adding it.
