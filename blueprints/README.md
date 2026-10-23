@@ -57,6 +57,7 @@ Keep lights with a separate purpose outside the layer groups and control them se
 - **Light groups.** `light.turn_on` on a group switches all its members. Make sure no bulb appears in more than one layer.
 - **Adaptive Lighting.** Dimming makes AL mark lights as manually controlled (when *take over control* is enabled). They return to adaptive control when the room is switched off.
 - **Without an override helper,** motion will also switch off lights that you turned on with a button.
+- **Night Mode wake detection.** Select the shared **Manual light-on timestamp** helper in each room that should count towards waking up. A main-button short/long press or brighten button records a timestamp only when it turns an entirely off room on. Turning off, scene cycling, dimming an already-on room, motion, and dashboard/app controls do not record it.
 
 ### Setup In Particular
 
@@ -74,7 +75,7 @@ Keep lights with a separate purpose outside the layer groups and control them se
 
 ### Night Mode (`automation/house_modes/night_mode.yaml`)
 
-Night Mode uses an `input_boolean` helper as the single source of truth for the house state. The in-bed sensor only turns the helper on; it never turns it off. Getting up during the night therefore does not end Night Mode. Turn the helper off from a dashboard or press a configured exit button when you want to leave Night Mode.
+Night Mode uses an `input_boolean` helper as the single source of truth for the house state. The in-bed sensor turns the helper on. Automatic exit requires **both** the bed sensor to report `off` and a physical room-lighting button to have turned an off room on within the configurable wake window (default 5 minutes). Either can happen first: the automation checks again when the bed state or manual light-on timestamp changes.
 
 When the helper turns on, the automation enables the selected Adaptive Lighting sleep-mode switches and turns off the selected lights. When the helper turns off, it disables those sleep-mode switches. Lights are not automatically restored.
 
@@ -84,9 +85,14 @@ Setup:
 2. Create an automation from the **Night Mode** blueprint.
 3. Select the helper, in-bed sensor, all rooms' Adaptive Lighting sleep-mode switches, and the household lights to turn off.
 4. Add the helper to a dashboard if you want a convenient manual way to end Night Mode.
-5. Optionally select bedside remote `event.*` entities under **Exit buttons**. Press the remote and inspect its `event_type` attribute in *Developer tools → States*, then set **Exit press event types** to the matching value (default `short_release`; custom values are supported). These inputs expect event entities, not `switch.*` or `button.*` entities.
+5. To enable automatic wake detection, create a **Date and/or time** helper with **both date and time** enabled. Select this same helper as **Manual light-on timestamp** in Night Mode and in every room-lighting automation whose buttons should count.
+6. Set the **Manual light-on wake window** to allow for the bed sensor's reporting delay (default 5 minutes).
 
-A matching exit-button event turns off the Night Mode helper, which disables the selected sleep-mode switches without turning lights on. Attribute-only updates and transitions from or to `unknown` or `unavailable` are ignored. Leave **Exit buttons** empty to retain dashboard-only exit control. After updating an existing blueprint, reload automations and edit its automation to configure the new inputs, then test the remote in Home Assistant.
+Turning lights off at bedtime does not end Night Mode. Motion lighting and dashboard/app controls do not count as manual activation. If a button turns a room on first, the delayed bed `off` update can end Night Mode while the timestamp is still within the window, even if the light has since turned off. An expired timestamp or one from before the current Night Mode session does not count. Unknown/unavailable bed states never satisfy the out-of-bed condition.
+
+If a manual light-on is followed by a bathroom trip within the window, both conditions are met and Night Mode will end; outside that window it stays active. The window limits how long an earlier manual action is remembered, not how long being out of bed counts.
+
+After updating **both** blueprints, reload automations and configure the shared timestamp helper in the affected automations. The former **Exit buttons** and **Exit press event types** inputs are retained for configuration compatibility but no longer trigger exit; no button is treated as an unconditional wake command. Leave the timestamp helper unselected to use only the Night Mode helper's manual/dashboard control. Test both event orders with the configured sensor and buttons in Home Assistant.
 
 Exiting Night Mode does not block future bed-sensor activation: a later off-to-on transition of the in-bed sensor can enter Night Mode again.
 

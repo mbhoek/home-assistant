@@ -2,9 +2,10 @@ blueprint:
   name: Night Mode
   description: >
     Uses a helper as the house's Night Mode state. An in-bed sensor turns the
-    mode on; it does not turn the mode off, so getting up during the night
-    won't cancel it. Turning the helper off manually or pressing a configured
-    exit button ends Night Mode.
+    mode on. To end it automatically, the sensor must report off and a
+    room-lighting button must have turned an off room on within the wake
+    window, in either order. A shared date-and-time helper records that action.
+    Turning the Night Mode helper off manually also ends Night Mode.
 
 
     When Night Mode turns on, the selected Adaptive Lighting sleep-mode
@@ -28,19 +29,44 @@ blueprint:
               multiple: false
         in_bed_sensor:
           name: In-bed sensor
-          description: Turns Night Mode on when the sensor changes to on. It never turns the mode off.
+          description: Turns Night Mode on when changing to on; off permits exit after a recent manual light-on.
           selector:
             entity:
               filter:
                 - domain: binary_sensor
               multiple: false
+    wake_section:
+      name: Wake conditions
+      icon: mdi:weather-sunset-up
+      input:
+        manual_light_on_helper:
+          name: Manual light-on timestamp (optional)
+          description: >
+            Date-and-time input_datetime helper shared with the room-lighting
+            automations. It must have both date and time enabled.
+          default: []
+          selector:
+            entity:
+              filter:
+                - domain: input_datetime
+              multiple: false
+        wake_window:
+          name: Manual light-on wake window
+          description: How long a manual light-on counts while waiting for the bed sensor to report off.
+          default: 5
+          selector:
+            number:
+              min: 1
+              max: 30
+              step: 1
+              unit_of_measurement: min
     buttons_section:
-      name: Exit buttons
+      name: Legacy exit buttons (unused)
       icon: mdi:gesture-tap-button
       input:
         exit_buttons:
-          name: Exit buttons (optional)
-          description: Event entities whose matching presses turn off the Night Mode helper.
+          name: Exit buttons (unused)
+          description: Retained for existing configurations; button presses no longer exit Night Mode directly.
           default: []
           selector:
             entity:
@@ -48,8 +74,8 @@ blueprint:
                 - domain: event
               multiple: true
         exit_press_types:
-          name: Exit press event types
-          description: Values of the event entity's event_type attribute that end Night Mode.
+          name: Exit press event types (unused)
+          description: Retained for existing configurations; use the shared manual light-on timestamp instead.
           default:
             - short_release
           selector:
@@ -94,8 +120,12 @@ trigger:
     from: "off"
     to: "on"
   - platform: state
-    id: exit_button
-    entity_id: !input exit_buttons
+    id: out_of_bed
+    entity_id: !input in_bed_sensor
+    to: "off"
+  - platform: state
+    id: manual_light_on
+    entity_id: !input manual_light_on_helper
     not_from: [unavailable, unknown]
     not_to: [unavailable, unknown]
   - platform: state
@@ -108,7 +138,11 @@ trigger:
     to: "off"
 
 variables:
-  exit_press_types: !input exit_press_types
+  night_mode_entity: !input night_mode_helper
+  bed_entity: !input in_bed_sensor
+  in_manual_light_on: !input manual_light_on_helper
+  wake_window: !input wake_window
+  manual_light_on_entity: "{{ in_manual_light_on if in_manual_light_on is string else '' }}"
   sleep_switches: !input adaptive_lighting_sleep_switches
   lights_to_turn_off: !input lights_to_turn_off
 
@@ -122,14 +156,19 @@ action:
             target:
               entity_id: !input night_mode_helper
 
-      - alias: Exit button - leave Night Mode
+      - alias: Out of bed and recent manual light-on - leave Night Mode
         conditions:
           - >
-            {{ trigger.id == 'exit_button'
-               and trigger.from_state is not none
-               and trigger.to_state is not none
-               and trigger.from_state.state != trigger.to_state.state
-               and trigger.to_state.attributes.event_type | default('') in exit_press_types }}
+            {{ trigger.id in ['out_of_bed', 'manual_light_on']
+               and is_state(night_mode_entity, 'on')
+               and is_state(bed_entity, 'off')
+               and manual_light_on_entity != '' }}
+          - >
+            {% set stamp = as_timestamp(states(manual_light_on_entity), 0) %}
+            {% set age = as_timestamp(now()) - stamp %}
+            {{ stamp > 0
+               and stamp >= as_timestamp(states[night_mode_entity].last_changed)
+               and age >= 0 and age <= wake_window | float * 60 }}
         sequence:
           - action: input_boolean.turn_off
             target:

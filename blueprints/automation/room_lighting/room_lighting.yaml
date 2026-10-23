@@ -245,6 +245,18 @@ blueprint:
                 - domain: switch
                   integration: adaptive_lighting
               multiple: false
+        manual_light_on_helper:
+          name: Manual light-on timestamp (optional)
+          description: >
+            Date-and-time input_datetime helper shared with Night Mode.
+            Records when a button turns an off room on; dimming, turning off
+            and motion do not count. Enable both date and time on the helper.
+          default: []
+          selector:
+            entity:
+              filter:
+                - domain: input_datetime
+              multiple: false
 
 mode: queued
 max: 10
@@ -310,6 +322,7 @@ variables:
   in_lux: !input lux_sensor
   in_override: !input override_helper
   in_al: !input adaptive_lighting_switch
+  in_manual_light_on: !input manual_light_on_helper
   short_types: !input short_press_types
   multi_press_window: !input multi_press_window
   long_types: !input long_press_types
@@ -323,6 +336,7 @@ variables:
   lux_entity: "{{ in_lux if in_lux is string else (in_lux | first if in_lux | count > 0 else '') }}"
   override_entity: "{{ in_override if in_override is string else (in_override | first if in_override | count > 0 else '') }}"
   al_entity: "{{ in_al if in_al is string else (in_al | first if in_al | count > 0 else '') }}"
+  manual_light_on_entity: "{{ in_manual_light_on if in_manual_light_on is string else '' }}"
 
   layer_lights:
     direct: "{{ direct }}"
@@ -390,6 +404,15 @@ variables:
   is_quick_repeat: >
     {{ room_on and scenes | count > 1 and last_change_age | float < multi_press_window | float }}
   is_long: "{{ event_type in long_types }}"
+  manual_light_on: >
+    {{ not room_on and default_lights | count > 0
+       and ((trigger.id == 'button' and (is_short or is_long))
+         or (trigger.id == 'dim_up' and (is_short or is_long)))
+       and trigger.from_state is defined and trigger.from_state is not none
+       and trigger.to_state is defined and trigger.to_state is not none
+       and trigger.from_state.state not in ['unknown', 'unavailable']
+       and trigger.to_state.state not in ['unknown', 'unavailable']
+       and trigger.from_state.state != trigger.to_state.state }}
   # Lowest brightness (0-255) of dimmable lights that are on; non-dimmable lights are ignored.
   min_brightness: >
     {% set b = on_lights | map('state_attr', 'brightness') | reject('none') | map('int') | list %}
@@ -563,3 +586,10 @@ action:
                 data:
                   entity_id: "{{ al_entity }}"
                   manual_control: false
+  - if: "{{ manual_light_on and manual_light_on_entity != '' }}"
+    then:
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: "{{ manual_light_on_entity }}"
+        data:
+          timestamp: "{{ now().timestamp() }}"
