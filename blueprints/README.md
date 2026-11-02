@@ -82,7 +82,7 @@ Night Mode uses an `input_boolean` helper as the single source of truth for the 
 - **Cancel:** if the sensor goes back to `on` during the window, the window is cancelled and Night Mode stays on.
 - **Manual on:** turning the helper on while the sensor already reads `off` starts the wake window then.
 
-When the helper turns on, the automation enables the selected Adaptive Lighting sleep-mode switches and turns off the selected lights. When the helper turns off, it disables those sleep-mode switches. Lights are not automatically restored.
+When the helper turns on, the automation enables the selected Adaptive Lighting sleep-mode switches. Once you have then been in bed for the **bedtime delay** (default 15 minutes, 1-60), it turns off the selected lights, including lights in rooms without a bed sensor. Getting out of bed cancels the delay and getting back in restarts it. Lights switched on during the delay are turned off at its end, so leave the bedroom lights out of the list if you want to keep them. When the helper turns off, it disables the sleep-mode switches. Lights are not automatically restored.
 
 Setup:
 
@@ -93,7 +93,7 @@ Setup:
 5. To enable automatic wake detection, create a **Date and/or time** helper with **both date and time** enabled. Select this same helper as **Manual light-on timestamp** in Night Mode and in every room-lighting automation whose buttons should count.
 6. Adjust the **Wake window** if needed (default 10 minutes). It is how long the bed sensor must stay `off` before Night Mode ends without a button press.
 
-Requires Home Assistant 2024.10 or newer. Turning lights off at bedtime does not end Night Mode. Motion lighting and dashboard/app controls do not count as a manual light-on. A press from before the current Night Mode session, or from before you last got into bed, never counts. Unknown/unavailable bed states do not start the wake window.
+Requires Home Assistant 2024.10 or newer. The bedtime delay and wake window timers do not survive a Home Assistant restart: if HA restarts while the timer is running, it only starts again on the next sensor or helper change. Turning lights off at bedtime does not end Night Mode. Motion lighting and dashboard/app controls do not count as a manual light-on. A press from before the current Night Mode session, or from before you last got into bed, never counts. Unknown/unavailable bed states do not start the wake window.
 
 Leave the timestamp helper unselected to end Night Mode only through the wake window or by turning the helper off manually.
 

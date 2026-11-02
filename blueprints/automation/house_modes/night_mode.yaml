@@ -11,8 +11,9 @@ blueprint:
 
 
     When Night Mode turns on, the selected Adaptive Lighting sleep-mode
-    switches are enabled and the selected lights are turned off. When it turns
-    off, the sleep-mode switches are disabled.
+    switches are enabled. Once you have then been in bed for the bedtime delay,
+    the selected lights are turned off; getting out of bed cancels the delay.
+    When Night Mode turns off, the sleep-mode switches are disabled.
   domain: automation
   homeassistant:
     min_version: 2024.10.0
@@ -82,13 +83,26 @@ blueprint:
               multiple: true
         lights_to_turn_off:
           name: Lights to turn off
-          description: Select the household lights to switch off on Night Mode entry.
+          description: Select the household lights to switch off once the bedtime delay has passed.
           default: []
           selector:
             entity:
               filter:
                 - domain: light
               multiple: true
+        bedtime_lights_off_delay:
+          name: Bedtime delay before lights go off
+          description: >
+            How long you must be in bed, with Night Mode on, before the selected
+            lights are turned off. Getting out of bed cancels it; getting back
+            in restarts it.
+          default: 15
+          selector:
+            number:
+              min: 1
+              max: 60
+              step: 1
+              unit_of_measurement: min
 
 mode: queued
 
@@ -115,6 +129,13 @@ triggers:
     value_template: "{{ is_state(bed_entity, 'off') and is_state(night_mode_entity, 'on') }}"
     for:
       minutes: !input wake_window
+  # Bedtime delay: in bed while Night Mode is on, continuously. Resets when
+  # the sensor goes off (or Night Mode ends) and restarts when back in bed.
+  - trigger: template
+    id: bedtime_lights_off
+    value_template: "{{ is_state(bed_entity, 'on') and is_state(night_mode_entity, 'on') }}"
+    for:
+      minutes: !input bedtime_lights_off_delay
   - trigger: state
     id: manual_light_on
     entity_id: !input manual_light_on_helper
@@ -172,7 +193,7 @@ actions:
             target:
               entity_id: !input night_mode_helper
 
-      - alias: Night Mode enabled - set sleep lighting and turn off lights
+      - alias: Night Mode enabled - set sleep lighting
         conditions:
           - "{{ trigger.id == 'night_mode_on' }}"
         sequence:
@@ -181,11 +202,16 @@ actions:
               - action: switch.turn_on
                 target:
                   entity_id: "{{ sleep_switches }}"
-          - if: "{{ lights_to_turn_off | count > 0 }}"
-            then:
-              - action: light.turn_off
-                target:
-                  entity_id: "{{ lights_to_turn_off }}"
+
+      - alias: In bed for the bedtime delay - turn off lights
+        conditions:
+          - "{{ trigger.id == 'bedtime_lights_off' }}"
+          - "{{ is_state(night_mode_entity, 'on') and is_state(bed_entity, 'on') }}"
+          - "{{ lights_to_turn_off | count > 0 }}"
+        sequence:
+          - action: light.turn_off
+            target:
+              entity_id: "{{ lights_to_turn_off }}"
 
       - alias: Night Mode disabled - leave sleep lighting
         conditions:
