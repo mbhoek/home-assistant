@@ -2,9 +2,11 @@ blueprint:
   name: Night Mode
   description: >
     Uses a helper as the house's Night Mode state. An in-bed sensor turns the
-    mode on. To end it automatically, the sensor must report off and a
-    room-lighting button must have turned an off room on within the wake
-    window, in either order. A shared date-and-time helper records that action.
+    mode on. When the sensor goes off, Night Mode ends immediately if a
+    room-lighting button turned an off room on since you last got into bed.
+    Otherwise a wake window starts: a button press during it ends Night Mode,
+    and so does the window running out. Getting back into bed during the
+    window cancels it. A shared date-and-time helper records the light press.
     Turning the Night Mode helper off manually also ends Night Mode.
 
 
@@ -51,9 +53,12 @@ blueprint:
                 - domain: input_datetime
               multiple: false
         wake_window:
-          name: Manual light-on wake window
-          description: How long a manual light-on counts while waiting for the bed sensor to report off.
-          default: 5
+          name: Wake window
+          description: >
+            How long the bed sensor must report off, with Night Mode on, before
+            Night Mode ends without a light press. Getting back into bed during
+            the window cancels it.
+          default: 10
           selector:
             number:
               min: 1
@@ -113,6 +118,11 @@ blueprint:
 
 mode: queued
 
+# Template triggers cannot see the regular `variables:` block below.
+trigger_variables:
+  night_mode_entity: !input night_mode_helper
+  bed_entity: !input in_bed_sensor
+
 trigger:
   - platform: state
     id: in_bed
@@ -123,6 +133,14 @@ trigger:
     id: out_of_bed
     entity_id: !input in_bed_sensor
     to: "off"
+  # Wake window: bed sensor off while Night Mode is on, continuously. Resets
+  # when the sensor goes back on (or Night Mode ends); also starts when Night
+  # Mode is turned on while the sensor already reads off.
+  - platform: template
+    id: wake_timeout
+    value_template: "{{ is_state(bed_entity, 'off') and is_state(night_mode_entity, 'on') }}"
+    for:
+      minutes: !input wake_window
   - platform: state
     id: manual_light_on
     entity_id: !input manual_light_on_helper
@@ -156,7 +174,7 @@ action:
             target:
               entity_id: !input night_mode_helper
 
-      - alias: Out of bed and recent manual light-on - leave Night Mode
+      - alias: Out of bed and light-on button pressed - leave Night Mode
         conditions:
           - >
             {{ trigger.id in ['out_of_bed', 'manual_light_on']
@@ -165,10 +183,25 @@ action:
                and manual_light_on_entity != '' }}
           - >
             {% set stamp = as_timestamp(states(manual_light_on_entity), 0) %}
-            {% set age = as_timestamp(now()) - stamp %}
-            {{ stamp > 0
-               and stamp >= as_timestamp(states[night_mode_entity].last_changed)
-               and age >= 0 and age <= wake_window | float * 60 }}
+            {% set mode_since = as_timestamp(states[night_mode_entity].last_changed) %}
+            {% if trigger.id == 'out_of_bed' %}
+              {# Sensor just went off: any press since getting into bed counts, however long ago. #}
+              {% set fs = trigger.from_state %}
+              {% set bed_since = as_timestamp(fs.last_changed) if fs is not none and fs.state == 'on' else 0 %}
+              {{ stamp > 0 and stamp >= mode_since and stamp >= bed_since }}
+            {% else %}
+              {# Press made during the wake window (sensor off, Night Mode on). #}
+              {{ stamp > 0 and stamp >= mode_since }}
+            {% endif %}
+        sequence:
+          - action: input_boolean.turn_off
+            target:
+              entity_id: !input night_mode_helper
+
+      - alias: Out of bed for the whole wake window - leave Night Mode anyway
+        conditions:
+          - "{{ trigger.id == 'wake_timeout' }}"
+          - "{{ is_state(night_mode_entity, 'on') and is_state(bed_entity, 'off') }}"
         sequence:
           - action: input_boolean.turn_off
             target:

@@ -75,7 +75,12 @@ Keep lights with a separate purpose outside the layer groups and control them se
 
 ### Night Mode (`automation/house_modes/night_mode.yaml`)
 
-Night Mode uses an `input_boolean` helper as the single source of truth for the house state. The in-bed sensor turns the helper on. Automatic exit requires **both** the bed sensor to report `off` and a physical room-lighting button to have turned an off room on within the configurable wake window (default 5 minutes). Either can happen first: the automation checks again when the bed state or manual light-on timestamp changes.
+Night Mode uses an `input_boolean` helper as the single source of truth for the house state. The in-bed sensor turns the helper on. When the bed sensor goes `off`:
+
+- **Button already pressed:** if a room-lighting button turned an off room on since you last got into bed, Night Mode ends immediately. Getting back into bed re-arms this, so an earlier press (for example a night-time toilet trip) does not trigger the morning exit.
+- **Wake window:** otherwise a wake window starts (default 10 minutes, 1-30). A button press during it ends Night Mode, and so does the window running out.
+- **Cancel:** if the sensor goes back to `on` during the window, the window is cancelled and Night Mode stays on.
+- **Manual on:** turning the helper on while the sensor already reads `off` starts the wake window then.
 
 When the helper turns on, the automation enables the selected Adaptive Lighting sleep-mode switches and turns off the selected lights. When the helper turns off, it disables those sleep-mode switches. Lights are not automatically restored.
 
