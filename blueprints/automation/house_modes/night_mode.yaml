@@ -15,7 +15,7 @@ blueprint:
     off, the sleep-mode switches are disabled.
   domain: automation
   homeassistant:
-    min_version: 2024.8.0
+    min_version: 2024.10.0
   input:
     state_section:
       name: House state
@@ -31,7 +31,7 @@ blueprint:
               multiple: false
         in_bed_sensor:
           name: In-bed sensor
-          description: Turns Night Mode on when changing to on; off permits exit after a recent manual light-on.
+          description: Turns Night Mode on when it changes to on. Changing to off starts the wake window.
           selector:
             entity:
               filter:
@@ -45,7 +45,8 @@ blueprint:
           name: Manual light-on timestamp (optional)
           description: >
             Date-and-time input_datetime helper shared with the room-lighting
-            automations. It must have both date and time enabled.
+            automations. It must have both date and time enabled. Without it,
+            Night Mode only ends when the wake window runs out.
           default: []
           selector:
             entity:
@@ -65,33 +66,6 @@ blueprint:
               max: 30
               step: 1
               unit_of_measurement: min
-    buttons_section:
-      name: Legacy exit buttons (unused)
-      icon: mdi:gesture-tap-button
-      input:
-        exit_buttons:
-          name: Exit buttons (unused)
-          description: Retained for existing configurations; button presses no longer exit Night Mode directly.
-          default: []
-          selector:
-            entity:
-              filter:
-                - domain: event
-              multiple: true
-        exit_press_types:
-          name: Exit press event types (unused)
-          description: Retained for existing configurations; use the shared manual light-on timestamp instead.
-          default:
-            - short_release
-          selector:
-            select:
-              multiple: true
-              custom_value: true
-              options:
-                - short_release
-                - initial_press
-                - single
-                - press
     lighting_section:
       name: Lighting
       icon: mdi:lightbulb-group
@@ -123,48 +97,48 @@ trigger_variables:
   night_mode_entity: !input night_mode_helper
   bed_entity: !input in_bed_sensor
 
-trigger:
-  - platform: state
+triggers:
+  - trigger: state
     id: in_bed
     entity_id: !input in_bed_sensor
     from: "off"
     to: "on"
-  - platform: state
+  - trigger: state
     id: out_of_bed
     entity_id: !input in_bed_sensor
     to: "off"
   # Wake window: bed sensor off while Night Mode is on, continuously. Resets
   # when the sensor goes back on (or Night Mode ends); also starts when Night
   # Mode is turned on while the sensor already reads off.
-  - platform: template
+  - trigger: template
     id: wake_timeout
     value_template: "{{ is_state(bed_entity, 'off') and is_state(night_mode_entity, 'on') }}"
     for:
       minutes: !input wake_window
-  - platform: state
+  - trigger: state
     id: manual_light_on
     entity_id: !input manual_light_on_helper
     not_from: [unavailable, unknown]
     not_to: [unavailable, unknown]
-  - platform: state
+  - trigger: state
     id: night_mode_on
     entity_id: !input night_mode_helper
     to: "on"
-  - platform: state
+  - trigger: state
     id: night_mode_off
     entity_id: !input night_mode_helper
     to: "off"
 
+# Same entity ids as trigger_variables: those are not guaranteed to be visible here.
 variables:
   night_mode_entity: !input night_mode_helper
   bed_entity: !input in_bed_sensor
   in_manual_light_on: !input manual_light_on_helper
-  wake_window: !input wake_window
   manual_light_on_entity: "{{ in_manual_light_on if in_manual_light_on is string else '' }}"
   sleep_switches: !input adaptive_lighting_sleep_switches
   lights_to_turn_off: !input lights_to_turn_off
 
-action:
+actions:
   - choose:
       - alias: In bed - enter Night Mode
         conditions:
@@ -174,34 +148,25 @@ action:
             target:
               entity_id: !input night_mode_helper
 
-      - alias: Out of bed and light-on button pressed - leave Night Mode
+      - alias: Out of bed and wake window over or light-on pressed - leave Night Mode
         conditions:
-          - >
-            {{ trigger.id in ['out_of_bed', 'manual_light_on']
-               and is_state(night_mode_entity, 'on')
-               and is_state(bed_entity, 'off')
-               and manual_light_on_entity != '' }}
-          - >
-            {% set stamp = as_timestamp(states(manual_light_on_entity), 0) %}
-            {% set mode_since = as_timestamp(states[night_mode_entity].last_changed) %}
-            {% if trigger.id == 'out_of_bed' %}
-              {# Sensor just went off: any press since getting into bed counts, however long ago. #}
-              {% set fs = trigger.from_state %}
-              {% set bed_since = as_timestamp(fs.last_changed) if fs is not none and fs.state == 'on' else 0 %}
-              {{ stamp > 0 and stamp >= mode_since and stamp >= bed_since }}
-            {% else %}
-              {# Press made during the wake window (sensor off, Night Mode on). #}
-              {{ stamp > 0 and stamp >= mode_since }}
-            {% endif %}
-        sequence:
-          - action: input_boolean.turn_off
-            target:
-              entity_id: !input night_mode_helper
-
-      - alias: Out of bed for the whole wake window - leave Night Mode anyway
-        conditions:
-          - "{{ trigger.id == 'wake_timeout' }}"
           - "{{ is_state(night_mode_entity, 'on') and is_state(bed_entity, 'off') }}"
+          - or:
+              - "{{ trigger.id == 'wake_timeout' }}"
+              - and:
+                  - "{{ trigger.id in ['out_of_bed', 'manual_light_on'] and manual_light_on_entity != '' }}"
+                  # The press must be newer than Night Mode itself and, when the
+                  # sensor just went off, newer than the moment it went on.
+                  - >
+                    {% set stamp = as_timestamp(states(manual_light_on_entity), 0) %}
+                    {% set since = as_timestamp(states[night_mode_entity].last_changed) %}
+                    {% set was_in_bed = trigger.id == 'out_of_bed'
+                       and trigger.from_state is not none
+                       and trigger.from_state.state == 'on' %}
+                    {% if was_in_bed %}
+                      {% set since = [since, as_timestamp(trigger.from_state.last_changed)] | max %}
+                    {% endif %}
+                    {{ stamp > 0 and stamp >= since }}
         sequence:
           - action: input_boolean.turn_off
             target:
