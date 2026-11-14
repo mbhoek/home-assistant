@@ -2,7 +2,7 @@
 
 ## Room lighting (`automation/room_lighting/room_lighting.yaml`)
 
-One automation per room. It controls up to three lighting layers from buttons and an optional motion sensor. Adaptive Lighting keeps handling brightness and colour temperature.
+One automation per room. It controls up to three lighting layers from Hue buttons and an optional motion sensor. Adaptive Lighting keeps handling brightness and colour temperature, so there are no brighten or dim controls.
 
 | Layer | Use for |
 |---|---|
@@ -16,16 +16,15 @@ When a layer has several bulbs, select the room/category **Light Group** helper 
 
 | Input | Action |
 |---|---|
-| Main button, short press | Room off → **default layers** on. Room on → everything off. |
-| Main button, short press **within 1 s** of the last light change | Cycle **Indirect → Indirect + Direct → All → Task → Indirect …** Layers the room doesn't have are skipped. So press once to turn on, then keep tapping to step through scenes. The window can be changed per room (*Multi-press window*). |
-| Main button, long press / hold | Room off → default layers on. Otherwise dim one step per event; at the lowest step it jumps back to 100%. |
-| Brighten / Dim buttons | Step brightness up or down. Brighten turns the default layers on when the room is off. |
-| Off buttons | Whole room off. |
-| Motion | If the room is off, no manual override is active and it is darker than the lux threshold: **Indirect** on. Rooms without Indirect lights use the default layers. |
+| Main button, short press | Steps to the next **light mode**: **1 Indirect → 2 Indirect + Direct → 3 Indirect + Direct + Task → Off**, then back to 1. Layers the room doesn't have are skipped, and repeated modes are merged. If the room is on in a combination that is not one of the modes (for example only Direct, switched on from the dashboard), the next press switches it off. |
+| Main button, long press | Room off. |
+| Motion | If the room is off, no manual override is active and it is darker than the lux threshold: **mode 1** (Indirect) on. |
 | No motion for *N* minutes (default 5) | Room off, unless the manual override is on. |
 | Room switched off (any source, including the dashboard) | Clears the manual override and resets Adaptive Lighting's manual-control flags. |
 
-Using a button switches on the room's **manual override** helper. While the override is on, motion won't switch the room off. The override clears when the room goes off, or after the override timeout (default 120 min). After a timeout, the room switches off if there is no motion.
+**Hue button events.** Home Assistant's Hue integration knows `initial_press`, `repeat`, `short_release`, `long_press`, `long_release` and `double_short_release`, but each device only sends a subset. The entity's `event_types` attribute (*Developer tools → States*) lists what yours supports, and `event_type` shows the last one received. A short press is `short_release`. A hold normally gives `initial_press`, then `repeat` events while held, then `long_release`; some setups also send `long_press`. The blueprint switches the room off on the first `long_press` or `repeat`, which is safe because switching off can be repeated. Both lists can be changed per room in the blueprint inputs.
+
+**Manual override.** Motion normally switches a room off after *N* minutes without motion. That would turn off a light you chose with a button, for example while you sit still reading. So using a button switches on the room's **manual override** helper, and while it is on motion never switches the room off. The override clears only when the room goes off, so lights you set with a button stay on until you switch them off (long press, or cycle past the last mode). There is deliberately no timeout. Without a motion sensor the override does nothing, so rooms without one don't need the helper.
 
 ### Setup
 
@@ -42,7 +41,6 @@ Using a button switches on the room's **manual override** helper. While the over
 |---|---|
 | Direct lights | Select the room's direct-light entities |
 | Indirect lights | Select the room's indirect-light entities |
-| Default layers | Indirect, Direct |
 | Main buttons | Select the room's `event.*` button entities |
 | Motion sensor | Select the room's motion sensor (optional) |
 | Lux sensor | Select the room's illuminance sensor (optional) |
@@ -53,11 +51,16 @@ Keep lights with a separate purpose outside the layer groups and control them se
 
 ### Notes and limitations
 
-- **Scene cycling uses the lights' `last_changed` time**, which only moves when a light switches on or off; Adaptive Lighting adjustments don't affect it. No helper is needed, and it works on remotes without a native double press, such as the Hue Smart Button. Pressing the button within 1 s after motion switched the lights on also cycles instead of switching off. If your lights report their state slowly, increase the window.
+- **The current mode is read from which layers are on.** A press after motion switched Indirect on therefore continues with mode 2. After switching lights on, the automation waits up to 3 s for them to report `on`, so quick repeated presses (they queue) see the right state. If your lights report their state slowly, a very fast second press may repeat a mode.
+- **A layer counts as on when any of its lights is on.** A task light shared with another layer would confuse the mode detection.
 - **Light groups.** `light.turn_on` on a group switches all its members. Make sure no bulb appears in more than one layer.
-- **Adaptive Lighting.** Dimming makes AL mark lights as manually controlled (when *take over control* is enabled). They return to adaptive control when the room is switched off.
+- **Restart.** The motion-off delay does not survive a Home Assistant restart; if motion stopped just before it, the room stays on until the next motion cycle.
 - **Without an override helper,** motion will also switch off lights that you turned on with a button.
-- **Night Mode wake detection.** Select the shared **Manual light-on timestamp** helper in each room that should count towards waking up. A main-button short/long press or brighten button records a timestamp only when it turns an entirely off room on. Turning off, scene cycling, dimming an already-on room, motion, and dashboard/app controls do not record it.
+- **Night Mode wake detection.** Select the shared **Manual light-on timestamp** helper in each room that should count towards waking up. A main-button short press records a timestamp only when it turns an entirely off room on. Turning off, cycling to the next mode, motion, and dashboard/app controls do not record it.
+
+### Upgrading from the previous version
+
+The inputs **Default layers**, **Brighten / Dim / Off buttons**, **Dim step**, **Multi-press window** and **Manual override timeout** were removed, along with dimming. Edit the YAML of each existing automation (⋮ → *Edit in YAML*) and remove any of `default_layers`, `dim_up_buttons`, `dim_down_buttons`, `off_buttons`, `dim_step`, `multi_press_window` and `override_timeout`, otherwise the automation will refuse to load. **Long press event types** now means "switch off" and defaults to `long_press` and `repeat`. The inputs were regrouped (the override helper moved into **Motion**, Adaptive Lighting and the Night Mode timestamp into **Adaptive Lighting & Night Mode**), but their names are unchanged, so existing automations keep their values. Reload automations afterwards.
 
 ### Setup In Particular
 

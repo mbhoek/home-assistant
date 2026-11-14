@@ -1,0 +1,4 @@
+# Local-only files. This repository is public: keep personal data out of it.
+# Real entity IDs, device IDs, names and the owner's routines live here.
+/reference/
+/IDEAS.md
