@@ -253,8 +253,6 @@ variables:
     indirect: "{{ indirect }}"
     task: "{{ task }}"
   all_lights: "{{ (direct + indirect + task) | unique | list }}"
-  on_lights: "{{ all_lights | select('is_state', 'on') | list }}"
-  room_on: "{{ on_lights | count > 0 }}"
 
   available_layers: >
     {% set ns = namespace(l=[]) %}
@@ -262,14 +260,6 @@ variables:
       {% if layer_lights[layer] | count > 0 %}{% set ns.l = ns.l + [layer] %}{% endif %}
     {% endfor %}
     {{ ns.l }}
-  layers_on: >
-    {% set ns = namespace(l=[]) %}
-    {% for layer in available_layers %}
-      {% if layer_lights[layer] | select('is_state', 'on') | list | count > 0 %}
-        {% set ns.l = ns.l + [layer] %}
-      {% endif %}
-    {% endfor %}
-    {{ ns.l | sort }}
   # Light modes in cycle order (each one adds a layer); modes collapse when a
   # room lacks a layer (e.g. no Indirect lights). Off comes after the last mode.
   modes: >
@@ -282,30 +272,6 @@ variables:
       {% endif %}
     {% endfor %}
     {{ ns.out }}
-  # Layers of the next mode; empty means the next step is Off. A room that is
-  # on in a combination that is not one of the modes goes to Off.
-  next_layers: >
-    {% set ns = namespace(i=-1, found=false, l=[]) %}
-    {% if modes | count > 0 %}
-      {% if not room_on %}
-        {% set ns.l = modes[0] %}
-      {% else %}
-        {% for s in modes %}
-          {% if s == layers_on %}{% set ns.i = loop.index0 %}{% set ns.found = true %}{% endif %}
-        {% endfor %}
-        {% if ns.found and ns.i + 1 < modes | count %}
-          {% set ns.l = modes[ns.i + 1] %}
-        {% endif %}
-      {% endif %}
-    {% endif %}
-    {{ ns.l }}
-  next_lights: >
-    {% set ns = namespace(l=[]) %}
-    {% for layer in next_layers %}
-      {% set ns.l = ns.l + layer_lights[layer] %}
-    {% endfor %}
-    {{ ns.l | unique | list }}
-  lights_to_switch_on: "{{ next_lights | reject('is_state', 'on') | list }}"
   # Motion switches on the first light mode.
   motion_lights: >
     {% set ns = namespace(l=[]) %}
@@ -321,22 +287,62 @@ variables:
        if trigger.to_state is defined and trigger.to_state else '' }}
   is_short: "{{ event_type in short_types }}"
   is_long: "{{ event_type in long_types }}"
-  # A short press that turns an entirely off room on (used for Night Mode wake detection).
-  manual_light_on: >
-    {{ not room_on and next_lights | count > 0
-       and trigger.id == 'button' and is_short
-       and trigger.from_state is defined and trigger.from_state is not none
-       and trigger.to_state is defined and trigger.to_state is not none
-       and trigger.from_state.state not in ['unknown', 'unavailable']
-       and trigger.to_state.state not in ['unknown', 'unavailable']
-       and trigger.from_state.state != trigger.to_state.state }}
-  lux_ok: >
-    {{ lux_entity == '' or not is_number(states(lux_entity))
-       or states(lux_entity) | float < lux_threshold | float }}
-  override_on: "{{ override_entity != '' and is_state(override_entity, 'on') }}"
-  no_motion: "{{ motion_entities | select('is_state', 'on') | list | count == 0 }}"
 
 action:
+  # Everything that depends on the lights' current state is worked out here,
+  # when the run actually starts. The top-level variables above are rendered at
+  # trigger time, before a queued run (for example a quick second button press)
+  # has waited for the previous run to finish, so they would still see the old
+  # light states.
+  - variables:
+      on_lights: "{{ all_lights | select('is_state', 'on') | list }}"
+      room_on: "{{ on_lights | count > 0 }}"
+      layers_on: >
+        {% set ns = namespace(l=[]) %}
+        {% for layer in available_layers %}
+          {% if layer_lights[layer] | select('is_state', 'on') | list | count > 0 %}
+            {% set ns.l = ns.l + [layer] %}
+          {% endif %}
+        {% endfor %}
+        {{ ns.l | sort }}
+      # Layers of the next mode; empty means the next step is Off. A room that
+      # is on in a combination that is not one of the modes goes to Off.
+      next_layers: >
+        {% set ns = namespace(i=-1, found=false, l=[]) %}
+        {% if modes | count > 0 %}
+          {% if not room_on %}
+            {% set ns.l = modes[0] %}
+          {% else %}
+            {% for s in modes %}
+              {% if s == layers_on %}{% set ns.i = loop.index0 %}{% set ns.found = true %}{% endif %}
+            {% endfor %}
+            {% if ns.found and ns.i + 1 < modes | count %}
+              {% set ns.l = modes[ns.i + 1] %}
+            {% endif %}
+          {% endif %}
+        {% endif %}
+        {{ ns.l }}
+      next_lights: >
+        {% set ns = namespace(l=[]) %}
+        {% for layer in next_layers %}
+          {% set ns.l = ns.l + layer_lights[layer] %}
+        {% endfor %}
+        {{ ns.l | unique | list }}
+      lights_to_switch_on: "{{ next_lights | reject('is_state', 'on') | list }}"
+      # A short press that turns an entirely off room on (used for Night Mode wake detection).
+      manual_light_on: >
+        {{ not room_on and next_lights | count > 0
+           and trigger.id == 'button' and is_short
+           and trigger.from_state is defined and trigger.from_state is not none
+           and trigger.to_state is defined and trigger.to_state is not none
+           and trigger.from_state.state not in ['unknown', 'unavailable']
+           and trigger.to_state.state not in ['unknown', 'unavailable']
+           and trigger.from_state.state != trigger.to_state.state }}
+      lux_ok: >
+        {{ lux_entity == '' or not is_number(states(lux_entity))
+           or states(lux_entity) | float < lux_threshold | float }}
+      override_on: "{{ override_entity != '' and is_state(override_entity, 'on') }}"
+      no_motion: "{{ motion_entities | select('is_state', 'on') | list | count == 0 }}"
   - choose:
       # ---------------- Main buttons ----------------
       - alias: Short press - next light mode (or off after the last)
